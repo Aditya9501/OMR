@@ -1,0 +1,72 @@
+import numpy as np
+import cv2
+import os
+import pandas as pd
+import os
+
+def create_image(paper_width=2480, paper_height=3508, margin_top=10, margin_bottom=10, margin_left=10, margin_right=10, num_rows=50, num_cols=30, num_circles=100, make_circles_black=False):
+    # Calculate available space for circles
+    available_width = paper_width - margin_left - margin_right
+    available_height = paper_height - margin_top - margin_bottom
+
+    # Calculate radius for circles
+    circle_radius = min(available_width // (2 * num_cols), available_height // (2 * num_rows)) - 5  # Adjusted for spacing
+
+    circle_outline_color = (0, 0, 0)  # Black (for circle outline) by default
+    circle_fill_color = (0, 0, 0) if make_circles_black else (255, 255, 255)  # Fill color based on user choice
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    font_color = (0, 0, 0)  # Black
+
+    # Calculate the spacing between circles
+    circle_spacing_x = available_width // (2 * num_cols)
+    circle_spacing_y = available_height // (2 * num_rows)
+
+    # Create a white A4-sized image
+    image = np.ones((paper_height, paper_width, 3), dtype=np.uint8) * 255
+
+    # Draw circles and add numbers
+    circle_count = 1  # Start numbers from 1
+    circle_coordinates = []  # List to store circle coordinates
+
+    for row in range(num_rows):
+        for col in range(num_cols):
+            if circle_count > num_circles:
+                break  # Exit loop if we've drawn the desired number of circles
+
+            # Calculate the circle's position
+            x = margin_left + (2 * col + 1) * circle_spacing_x
+            y = margin_top + (2 * row + 1) * circle_spacing_y
+
+            # Decide whether to make the circle inside dark based on user input
+            make_inside_dark = np.random.choice([True, False], p=[0.5, 0.5]) if make_circles_black else False
+
+            # Draw the circle outline
+            cv2.circle(image, (x, y), circle_radius, circle_outline_color, 2)  # Circle outline
+
+            # Fill the circle inside if needed
+            if make_inside_dark:
+                cv2.circle(image, (x, y), circle_radius - 2, (0, 0, 0), -1)  # Dark circle inside
+
+            # Add the corresponding number
+            number_text = str(circle_count)
+            text_size = cv2.getTextSize(number_text, font, font_scale, 1)[0]
+            text_x = x - text_size[0] // 2
+            text_y = y + text_size[1] // 2
+
+            cv2.putText(image, number_text, (text_x, text_y), font, font_scale, font_color, 1, cv2.LINE_AA)
+
+            circle_coordinates.append((circle_count, x, y))  # Store circle number and coordinates
+            circle_count += 1
+
+    # Save the image as JPG
+    save_dir = save_path
+    image_filename = "circles_with_numbers.jpg"
+    filepath = os.path.join(save_dir, image_filename)
+    cv2.imwrite(filepath, image)
+
+    # Create a DataFrame with circle information
+    df = pd.DataFrame(circle_coordinates, columns=['Circle Number', 'X', 'Y'])
+
+    return image, df
