@@ -1,0 +1,61 @@
+def filled_circle_identifier(image_path):
+    image = cv2.imread(image_path)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    edges = cv2.Canny(gray_image, 100, 200)
+    # Threshold the image
+    _, thresholded_image = cv2.threshold(gray_image, 128, 255, cv2.THRESH_BINARY)
+    
+    # Invert the thresholded image
+    inverted_image = cv2.bitwise_not(thresholded_image)
+    
+    # Find contours in the inverted image
+    contours, _ = cv2.findContours(inverted_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    mark_color = (0, 255, 0)
+    not_mark_color = (0, 0, 255)
+
+    # Function to calculate the average intensity within a circle
+    def average_intensity(mask, original_image):
+        masked_image = cv2.bitwise_and(original_image, original_image, mask=mask)
+        total_intensity = np.sum(masked_image) / 255
+        total_area = np.sum(mask) / 255
+        return total_intensity / total_area
+
+    # Threshold for intensity (adjust as needed)
+    intensity_threshold = 0.38  # 38% threshold
+
+    # Create lists to store circle information
+    circle_colors = []  # Red or Green
+    circle_centers = []  # Center coordinates
+
+    # Iterate through the contours and highlight circles meeting the criteria
+    for index, contour in enumerate(contours, start=1):
+        # Create a mask for the current contour
+        mask = np.zeros_like(thresholded_image)
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+        # Calculate the average intensity within the circle
+        avg_intensity = average_intensity(mask, gray_image)
+
+        if avg_intensity < intensity_threshold:
+            cv2.drawContours(image, [contour], -1, mark_color, 1)
+            circle_colors.append('Voted')
+        else:
+            cv2.drawContours(image, [contour], -1, not_mark_color, 1)
+            circle_colors.append('Not Voted')
+
+        # Calculate the center of the circle
+        M = cv2.moments(contour)
+        if M['m00'] != 0:
+            center_x = int(M['m10'] / M['m00'])
+            center_y = int(M['m01'] / M['m00'])
+            circle_centers.append((center_x, center_y))
+        else:
+            circle_centers.append(None)
+
+    # Create a DataFrame with circle information
+    data = {'Response': circle_colors, 'X_Coordinates': [i[0] for i in circle_centers], 'Y_Coordinates': [i[1] for i in circle_centers]}
+    df = pd.DataFrame(data)
+
+    return image,df
