@@ -57,5 +57,6 @@ def filled_circle_identifier(image_path):
     # Create a DataFrame with circle information
     data = {'Response': circle_colors, 'X_Coordinates': [i[0] for i in circle_centers], 'Y_Coordinates': [i[1] for i in circle_centers]}
     df = pd.DataFrame(data)
+    df = df.sort_values(by='Circle Number')
 
     return image,df
