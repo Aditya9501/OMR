@@ -1,4 +1,4 @@
-def filled_circle_identifier(image_path):
+def filled_circle_identifier(image_path, intensity_threshold = 0.38):
     image = cv2.imread(image_path)
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -21,9 +21,6 @@ def filled_circle_identifier(image_path):
         total_intensity = np.sum(masked_image) / 255
         total_area = np.sum(mask) / 255
         return total_intensity / total_area
-
-    # Threshold for intensity (adjust as needed)
-    intensity_threshold = 0.38  # 38% threshold
 
     # Create lists to store circle information
     circle_colors = []  # Red or Green
