@@ -1,0 +1,91 @@
+import cv2
+from google.colab.patches import cv2_imshow
+import numpy as np
+import pandas as pd
+
+def OMRfinal(image_path, tv = 190, angle = 0.9, top_margin = 10,  bottom_margin = 67,  left_margin = 30,   right_margin = 44):
+  image = cv2.imread(image_path)
+  # Get the image dimensions
+  height, width = image.shape[:2]
+
+  # Calculate the rotation matrix
+  rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
+
+  # Apply the rotation to the image
+  corrected_image = cv2.warpAffine(image, rotation_matrix, (width, height))
+
+  # Get the dimensions of the original image
+  height, width, _ = corrected_image.shape
+
+  # Calculate the coordinates for cropping
+  top_crop = top_margin
+  bottom_crop = height - bottom_margin
+  left_crop = left_margin
+  right_crop = width - right_margin
+
+  # Crop the image using the calculated coordinates
+  cropped_image = image[top_crop:bottom_crop, left_crop:right_crop]
+
+  # Convert the image to grayscale
+  gray_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+
+  # Apply a threshold to create a binary image
+  threshold_value = tv  # Adjust this threshold value as needed
+  _, binary_image = cv2.threshold(gray_image, threshold_value, 255, cv2.THRESH_BINARY)
+
+  kernel = np.ones((5, 5), np.uint8)
+
+  dilated_image = cv2.dilate(binary_image, kernel, iterations=1)
+  contours, hierarchy = cv2.findContours(dilated_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+  # Create a copy of the original image
+  image_with_contours = cropped_image.copy()
+
+  c_co = sorted(contours,key=cv2.contourArea, reverse=True)[1:]
+
+  # Draw the contours on the image
+  # cv2.drawContours(image_with_contours,c_co , -1, (0, 0, 255), 1)
+  
+  for contour in c_co:
+    cv2.drawContours(image_with_contours, [contour], -1, (0, 255, 0), 1)
+
+  centroids = []
+  ar = []
+  for contour in c_co:
+      # Calculate the moments of the contour
+      M = cv2.moments(contour)
+
+      # Calculate the centroid coordinates
+      if M['m00'] != 0:
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+          centroids.append((cx, cy))
+          ar.append(cv2.contourArea(contour))
+      else:
+          # Handle the case where the contour has zero area
+          centroids.append(None)
+          ar.append(None)
+  df = pd.DataFrame({'Centres': centroids, 'Area':ar})
+
+  for centroid in df['Centres']:
+      if centroid is not None:
+          cx, cy = centroid
+          cv2.circle(image_with_contours, (cx, cy), 1, (0, 0, 255), -1)
+
+  num_rows = 60
+  num_columns = 30
+
+  # Get the dimensions of the image
+  height, width, _ = cropped_image.shape
+
+  # Calculate the step size for rows and columns
+  row_step = height // num_rows
+  column_step = width // num_columns
+
+  for row in range(num_rows):
+      y = row * row_step
+      for col in range(num_columns):
+          x = col * column_step
+          cv2.rectangle(image_with_contours, (x, y), (x + column_step, y + row_step), (255, 165, 0), 1)
+    
+  return image_with_contours, df
