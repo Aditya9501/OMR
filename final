@@ -1,0 +1,174 @@
+import cv2
+from google.colab.patches import cv2_imshow
+import numpy as np
+import pandas as pd
+import webcolors
+
+def OMRfinal(image_path, tv = 190, angle = 0.9, top_margin = 10,  bottom_margin = 67,  left_margin = 30,   right_margin = 40):
+
+  image = cv2.imread(image_path)
+
+  # Get the image dimensions
+  height, width = image.shape[:2]
+
+  # Calculate the rotation matrix
+  rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
+
+  # Apply the rotation to the image
+  corrected_image = cv2.warpAffine(image, rotation_matrix, (width, height))
+
+  # Get the dimensions of the original image
+  height, width, _ = corrected_image.shape
+
+  # Calculate the coordinates for cropping
+  top_crop = top_margin
+  bottom_crop = height - bottom_margin
+  left_crop = left_margin
+  right_crop = width - right_margin
+
+  # Crop the image using the calculated coordinates
+  cropped_image = image[top_crop:bottom_crop, left_crop:right_crop]
+
+  # Convert the image to grayscale
+  gray_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+
+  # Apply a threshold to create a binary image
+  threshold_value = tv  # Adjust this threshold value as needed
+  _, binary_image = cv2.threshold(gray_image, threshold_value, 255, cv2.THRESH_BINARY)
+
+  kernel = np.ones((5, 5), np.uint8)
+
+  dilated_image = cv2.dilate(binary_image, kernel, iterations=1)
+  contours, hierarchy = cv2.findContours(dilated_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+  # Create a copy of the original image
+  image_with_contours = cropped_image.copy()
+
+  c_co = sorted(contours,key=cv2.contourArea, reverse=True)[1:]
+
+  # Draw the contours on the image
+  # cv2.drawContours(image_with_contours,c_co , -1, (0, 0, 255), 1)
+
+  for contour in c_co:
+    cv2.drawContours(image_with_contours, [contour], -1, (0, 255, 0), 1)
+
+  centroids = []
+  ar = []
+  for contour in c_co:
+      # Calculate the moments of the contour
+      M = cv2.moments(contour)
+
+      # Calculate the centroid coordinates
+      if M['m00'] != 0:
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+          centroids.append((cx, cy))
+          ar.append(cv2.contourArea(contour))
+      else:
+          # Handle the case where the contour has zero area
+          centroids.append(None)
+          ar.append(None)
+  df = pd.DataFrame({'Centres': centroids, 'Area':ar})
+
+  df['x'], df['y'] = zip(*df['Centres'])
+  df = df.sort_values(by=['y', 'x'], ascending=[True, True])
+
+  # Drop the 'x' and 'y' columns if you don't need them in the final DataFrame
+  df = df.drop(['x', 'y'], axis=1)
+
+  color_values = []
+  for index, row in df.iterrows():
+      if row['Centres'] is not None:
+          x, y = row['Centres']
+          # Extract BGR values at the centroid
+          color_value = cropped_image[y, x]
+          color_values.append(color_value)
+      else:
+          color_values.append(None)
+
+  # Add new columns for B, G, and R values
+  df['B Value'], df['G Value'], df['R Value'] = zip(*color_values)
+
+  color_ranges = {
+    "Red": [(0, 0, 100), (50, 50, 255)],
+    "Blue": [(100, 0, 0), (255, 50, 50)],
+    "Green": [(0, 100, 0), (50, 255, 50)],
+    "Black": [(0, 0, 0), (50, 50, 50)]
+    }
+
+  # Function to determine the color range
+  def get_color_range(bgr):
+      for color, (lower, upper) in color_ranges.items():
+          if (lower <= bgr).all() and (bgr <= upper).all():
+              return color
+      return "Other"
+
+  df['Color Range'] = [get_color_range(bgr) if bgr is not None else "Other" for bgr in color_values]
+
+  for centroid in df['Centres']:
+      if centroid is not None:
+          cx, cy = centroid
+          cv2.circle(image_with_contours, (cx, cy), 1, (0, 0, 255), -1)
+  
+  num_rows = 60
+  num_columns = 30
+
+  # Get the dimensions of the image
+  height, width, _ = cropped_image.shape
+
+  # Calculate the step size for rows and columns
+  row_step = height // num_rows
+  column_step = width // num_columns
+
+
+  for row in range(num_rows):
+      y = row * row_step
+      for col in range(num_columns):
+          x = col * column_step
+          cv2.rectangle(image_with_contours, (x, y), (x + column_step, y + row_step), (255, 165, 0), 1)
+
+  row_step = height // num_rows
+  column_step = width // num_columns
+
+  box_data = []
+
+  for row in range(num_rows):
+      y = row * row_step
+      for col in range(num_columns):
+          x = col * column_step
+          box_coords = {
+              'Box Number': col + row * num_columns+1,
+              'Box Coordinates': (x, y, x + column_step, y + row_step)
+          }
+          box_data.append(box_coords)
+
+  # Sort the boxes from top left to bottom right
+  box_data = sorted(box_data, key=lambda x: (x['Box Coordinates'][1], x['Box Coordinates'][0]))
+
+  box_df = pd.DataFrame(box_data)
+
+
+  return image_with_contours, df, box_df
+
+def point_position(recs, pt):
+    rect_start = (recs[0], recs[1]) 
+    rect_end = (recs[2], recs[3])
+    x1, y1 = rect_start
+    x2, y2 = rect_end
+    x, y = pt
+
+    if x1 <= x <= x2 and y1 <= y <= y2:
+        if x == x1:
+            return "On the left edge"
+        elif x == x2:
+            return "On the right edge"
+        elif y == y1:
+            return "On the top edge"
+        elif y == y2:
+            return "On the bottom edge"
+        else:
+            return "Inside"
+    elif x < x1 or x > x2 or y < y1 or y > y2:
+        return "Outside"
+    else:
+        return "Inside"
